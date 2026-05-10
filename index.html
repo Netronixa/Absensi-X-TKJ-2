@@ -239,10 +239,7 @@
               <button id="btnNextDay" class="px-3 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-sm transition">
                 Berikutnya<i data-lucide="chevron-right" class="w-4 h-4 inline ml-1"></i>
               </button>
-              <button id="btnExportHarian" class="btn-export" title="Export absensi hari ini ke Excel">
-                <i data-lucide="file-spreadsheet" class="w-4 h-4"></i>
-                Export Excel
-              </button>
+
             </div>
           </div>
         </div>
@@ -1024,7 +1021,6 @@
     ws2["!cols"] = [{ wch: 35 }, { wch: 35 }, { wch: 35 }, { wch: 35 }];
     window.XLSX.utils.book_append_sheet(wb, ws2, "Per Status");
 
-    window.XLSX.utils.book_set_sheet_name(wb, ws1, "Absensi Harian");
     window.XLSX.writeFile(wb, `Absensi_Harian_${currentDateKey}.xlsx`);
     toast("✅ Export Excel harian berhasil!", "success");
   }
@@ -1235,8 +1231,7 @@
     }
   });
 
-  // Export buttons
-  $("#btnExportHarian").addEventListener("click", exportHarian);
+  // Export button
   $("#btnExportBulanan").addEventListener("click", exportBulanan);
 
   // ============================================================
