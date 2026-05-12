@@ -359,6 +359,7 @@
     measurementId: "G-B3TG3K9E7X"
   };
 
+  // Initialize Firebase
   firebase.initializeApp(firebaseConfig);
   const dbFirestore = firebase.firestore();
 
@@ -518,7 +519,7 @@
   function setDbStatus(status) {
     const badge = $("#dbStatusBadge");
     const configs = {
-      connected: { cls: 'connected', dotColor: '#22c55e', text: 'Cloud Sync Aktif (/absen)' },
+      connected: { cls: 'connected', dotColor: '#22c55e', text: 'Cloud Sync Aktif (Firebase /absen)' },
       connecting: { cls: 'connecting', dotColor: '#f59e0b', text: 'Menghubungkan Database...' },
       error: { cls: 'error', dotColor: '#ef4444', text: 'Database Error' },
     };
