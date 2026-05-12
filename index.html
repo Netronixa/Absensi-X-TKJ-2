@@ -160,6 +160,11 @@
 
 
   </style>
+
+  <!-- Firebase SDK -->
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+
 </head>
 <body class="h-full w-full">
 
@@ -327,7 +332,7 @@
 
       <footer class="text-center text-xs text-slate-500 py-4">
         © <span id="yr"></span> SMK YADIKA 13 Tambun Selatan — Sistem Absensi Digital X TKJ 2
-        <span class="ml-2 opacity-60">• Database: IndexedDB</span>
+        <span class="ml-2 opacity-60">• Database: Firebase Firestore</span>
       </footer>
     </main>
   </div>
@@ -340,141 +345,61 @@
   // ============================================================
   // DATABASE (IndexedDB)
   // ============================================================
+  
+  // ============================================================
+  // DATABASE (Firebase Firestore)
+  // ============================================================
+  const firebaseConfig = {
+    apiKey: "AIzaSy...", // Ganti dengan API Key Anda jika belum benar
+    authDomain: "absensi-tkj.firebaseapp.com",
+    projectId: "absensi-tkj",
+    storageBucket: "absensi-tkj.appspot.com",
+    messagingSenderId: "123456789",
+    appId: "1:123456789:web:abcdef"
+  };
+
+  firebase.initializeApp(firebaseConfig);
+  const dbFirestore = firebase.firestore();
+
   class AttendanceDB {
-    constructor() {
-      this.dbName = 'AbsensiDigital_XTKJ2';
-      this.version = 1;
-      this.db = null;
-      this.ready = false;
-    }
+    constructor() { this.ready = true; }
+    async init() { return true; }
 
-    async init() {
-      return new Promise((resolve, reject) => {
-        const req = indexedDB.open(this.dbName, this.version);
-
-        req.onupgradeneeded = (e) => {
-          const db = e.target.result;
-          if (!db.objectStoreNames.contains('attendance')) {
-            const store = db.createObjectStore('attendance', { keyPath: 'id', autoIncrement: true });
-            // Composite index: (date, student_index) must be unique
-            store.createIndex('by_date_student', ['date', 'student_index'], { unique: true });
-            store.createIndex('by_date', 'date', { unique: false });
-          }
-          if (!db.objectStoreNames.contains('photos')) {
-            db.createObjectStore('photos', { keyPath: 'student_index' });
-          }
-        };
-
-        req.onsuccess = (e) => {
-          this.db = e.target.result;
-          this.ready = true;
-          resolve();
-        };
-
-        req.onerror = (e) => {
-          console.error('IndexedDB gagal dibuka:', e.target.error);
-          reject(e.target.error);
-        };
-
-        req.onblocked = () => {
-          console.warn('IndexedDB diblokir oleh tab lain');
-        };
-      });
-    }
-
-    // Ambil semua record absensi
     async getAll() {
-      return new Promise((resolve, reject) => {
-        const tx = this.db.transaction('attendance', 'readonly');
-        const store = tx.objectStore('attendance');
-        const req = store.getAll();
-        req.onsuccess = () => resolve(req.result || []);
-        req.onerror = () => reject(req.error);
-      });
+      const snapshot = await dbFirestore.collection('attendance').get();
+      return snapshot.docs.map(doc => doc.data());
     }
 
-    // Simpan/update 1 record (upsert)
     async upsert(date, studentIndex, status) {
-      return new Promise((resolve, reject) => {
-        const tx = this.db.transaction('attendance', 'readwrite');
-        const store = tx.objectStore('attendance');
-        const idx = store.index('by_date_student');
-
-        const getReq = idx.get([date, studentIndex]);
-
-        getReq.onsuccess = () => {
-          const existing = getReq.result;
-          if (status === null) {
-            // Hapus jika ada
-            if (existing) store.delete(existing.id);
-          } else {
-            if (existing) {
-              // Update
-              store.put({ id: existing.id, date, student_index: studentIndex, status });
-            } else {
-              // Insert baru
-              store.add({ date, student_index: studentIndex, status });
-            }
-          }
-        };
-
-        tx.oncomplete = () => resolve(true);
-        tx.onerror = () => reject(tx.error);
-      });
+      const docId = `${date}_${studentIndex}`;
+      const docRef = dbFirestore.collection('attendance').doc(docId);
+      if (status === null) return await docRef.delete();
+      return await docRef.set({ date, student_index: studentIndex, status });
     }
 
-    // Simpan banyak record sekaligus (untuk "tandai semua hadir")
     async upsertBatch(records) {
-      return new Promise((resolve, reject) => {
-        const tx = this.db.transaction('attendance', 'readwrite');
-        const store = tx.objectStore('attendance');
-        const idx = store.index('by_date_student');
-
-        records.forEach(({ date, student_index, status }) => {
-          const getReq = idx.get([date, student_index]);
-          getReq.onsuccess = () => {
-            const existing = getReq.result;
-            if (status === null) {
-              if (existing) store.delete(existing.id);
-            } else {
-              if (existing) {
-                store.put({ id: existing.id, date, student_index, status });
-              } else {
-                store.add({ date, student_index, status });
-              }
-            }
-          };
-        });
-
-        tx.oncomplete = () => resolve(true);
-        tx.onerror = () => reject(tx.error);
+      const batch = dbFirestore.batch();
+      records.forEach(r => {
+        const docId = `${r.date}_${r.student_index}`;
+        const ref = dbFirestore.collection('attendance').doc(docId);
+        if (r.status === null) batch.delete(ref);
+        else batch.set(ref, r);
       });
+      return await batch.commit();
     }
 
-    // Simpan foto
     async savePhoto(studentIndex, dataUrl) {
-      return new Promise((resolve, reject) => {
-        const tx = this.db.transaction('photos', 'readwrite');
-        const store = tx.objectStore('photos');
-        store.put({ student_index: studentIndex, data: dataUrl });
-        tx.oncomplete = () => resolve(true);
-        tx.onerror = () => reject(tx.error);
+      return await dbFirestore.collection('photos').doc(String(studentIndex)).set({
+        student_index: studentIndex, data: dataUrl
       });
     }
 
-    // Ambil semua foto
     async getAllPhotos() {
-      return new Promise((resolve, reject) => {
-        const tx = this.db.transaction('photos', 'readonly');
-        const store = tx.objectStore('photos');
-        const req = store.getAll();
-        req.onsuccess = () => resolve(req.result || []);
-        req.onerror = () => reject(req.error);
-      });
+      const snapshot = await dbFirestore.collection('photos').get();
+      return snapshot.docs.map(doc => doc.data());
     }
   }
 
-  // Instance database global
   const db = new AttendanceDB();
 
   // ============================================================
@@ -585,8 +510,8 @@
   function setDbStatus(status) {
     const badge = $("#dbStatusBadge");
     const configs = {
-      connected: { cls: 'connected', dotColor: '#22c55e', text: 'Database Terhubung (IndexedDB)' },
-      connecting: { cls: 'connecting', dotColor: '#f59e0b', text: 'Menghubungkan Database...' },
+      connected: { cls: 'connected', dotColor: '#22c55e', text: 'Database Terhubung (Firebase Cloud)' },
+      connecting: { cls: 'connecting', dotColor: '#f59e0b', text: 'Menghubungkan Firebase...' },
       error: { cls: 'error', dotColor: '#ef4444', text: 'Database Error' },
     };
     const cfg = configs[status] || configs.connecting;
