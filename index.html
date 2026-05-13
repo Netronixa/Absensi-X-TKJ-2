@@ -423,31 +423,35 @@
   }
 
   document.getElementById('btnLogin').onclick = () => {
-    const user = document.getElementById('username').value.trim();
-    const pass = document.getElementById('password').value;
-    if (!user || !pass) return showToast("Lengkapi form login!", "error");
-
-    const isStudent = STUDENTS.includes(user);
-    const isTeacher = user === "Engglin Angela Theresia Humbas, S. Kom";
-    const isAdmin = ADMIN_LIST.includes(user);
+    const userInput = document.getElementById('username').value.trim();
+    const passInput = document.getElementById('password').value;
     
-    // VALIDASI PASSWORD
-    // Admin: 654321, Siswa: 123456
-    const requiredPass = isAdmin ? "654321" : "123456";
+    if (!userInput || !passInput) {
+      alert("Lengkapi form login!");
+      return;
+    }
 
-    if ((isStudent || isTeacher) && pass === requiredPass) {
+    // Cari di daftar siswa
+    const isStudent = STUDENTS.includes(userInput);
+    const isTeacher = (userInput === "Engglin Angela Theresia Humbas, S. Kom");
+    const isAdmin = ADMIN_LIST.includes(userInput);
+    
+    // Logic Password
+    const correctPass = isAdmin ? "654321" : "123456";
+
+    if ((isStudent || isTeacher) && passInput === correctPass) {
       currentUser = {
-        name: user,
+        name: userInput,
         role: isAdmin ? 'admin' : 'siswa'
       };
       localStorage.setItem('absensi_session', JSON.stringify(currentUser));
       document.getElementById('loginOverlay').classList.add('hidden');
       applyPermissions();
       loadSettings();
-      showToast("Selamat datang, " + user.split(' ')[0]);
-      if(checkAuth()) refreshAll(); lucide.createIcons(); // Trigger data load
+      if(checkAuth()) refreshAll(); lucide.createIcons(); // Reload data
+      console.log("Login sukses sebagai:", currentUser.role);
     } else {
-      showToast("Nama atau Password salah!", "error");
+      alert("Nama tidak terdaftar atau Password salah!");
     }
   };
 
@@ -470,8 +474,7 @@
       applyLogoUI(base64);
       try {
         await dbFirestore.collection('settings').doc('config').set({ schoolLogo: base64 }, { merge: true });
-        showToast("Logo berhasil diperbarui!");
-      } catch (err) { showToast("Gagal simpan ke cloud", "error"); }
+      } catch (err) { console.error("Gagal simpan logo", err); }
     };
     reader.readAsDataURL(file);
   };
@@ -492,14 +495,6 @@
       const doc = await dbFirestore.collection('settings').doc('config').get();
       if (doc.exists && doc.data().schoolLogo) applyLogoUI(doc.data().schoolLogo);
     } catch (e) { console.warn("Settings failed to load", e); }
-  }
-
-  function showToast(msg, type = 'success') {
-    const t = document.getElementById('toast');
-    if (!t) return;
-    t.className = 'toast ' + type + ' show';
-    t.innerHTML = '<span>' + msg + '</span>';
-    setTimeout(() => t.classList.remove('show'), 3000);
   }
 
   function checkAuth() {
