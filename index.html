@@ -96,7 +96,7 @@
       border-radius: 16px;
       padding: 16px 18px;
       color: #fff;
-      position: relative; overflow: hidden;
+      position: relative overflow: hidden;
     }
     .stat-card::after{
       content:""; position:absolute; right:-30px; top:-30px;
@@ -128,6 +128,12 @@
     }
     .btn-export:hover { transform: translateY(-1px); box-shadow: 0 6px 16px -4px rgba(16,185,129,.6); }
     .btn-export:active { transform: translateY(0); }
+    
+    .btn-export-harian {
+      background: linear-gradient(135deg,#3b82f6,#2563eb);
+      box-shadow: 0 4px 12px -4px rgba(59,130,246,.5);
+    }
+    .btn-export-harian:hover { box-shadow: 0 6px 16px -4px rgba(59,130,246,.6); }
 
     /* Scrollbar */
     .tbl-wrap::-webkit-scrollbar { height: 10px; width:10px; }
@@ -158,10 +164,8 @@
       .status-btn { width:30px; height:30px; font-size:12px;}
     }
 
-
   </style>
 
-  <!-- Firebase SDK -->
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
 
@@ -237,6 +241,11 @@
               </div>
             </div>
             <div class="flex flex-wrap items-center gap-2">
+              <button id="btnExportHarian" class="btn-export btn-export-harian" title="Export absen hari ini ke Excel">
+                <i data-lucide="file-spreadsheet" class="w-4 h-4"></i>
+                Export Harian
+              </button>
+              <div class="w-px h-6 bg-slate-300 mx-1 hidden sm:block"></div>
               <button id="btnPrevDay" class="px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-sm transition">
                 <i data-lucide="chevron-left" class="w-4 h-4 inline mr-1"></i>Sebelumnya
               </button>
@@ -244,7 +253,6 @@
               <button id="btnNextDay" class="px-3 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-sm transition">
                 Berikutnya<i data-lucide="chevron-right" class="w-4 h-4 inline ml-1"></i>
               </button>
-
             </div>
           </div>
         </div>
@@ -322,7 +330,7 @@
                 <th class="text-center">Sakit</th>
                 <th class="text-center">Izin</th>
                 <th class="text-center">Alpa</th>
-                <th class="text-center pr-5">%</th>
+                <th class="text-center pr-5">% Hadir</th>
               </tr>
             </thead>
             <tbody id="monthlyBody"></tbody>
@@ -342,10 +350,6 @@
   <div id="toast" class="toast"></div>
 
   <script>
-  // ============================================================
-  // DATABASE (IndexedDB)
-  // ============================================================
-  
   // ============================================================
   // 🔥 FIREBASE CONNECTION (Konektor Database)
   // ============================================================
@@ -433,10 +437,7 @@
   const attendanceByDate = {};
   const photos = STUDENTS.map(() => null);
 
-  // State tanggal saat ini (format YYYY-MM-DD)
   let currentDateKey = getDateKey(new Date());
-
-  // State bulan rekapitulasi (format YYYY-MM)
   let recapMonthKey = currentDateKey.slice(0, 7);
 
   // ============================================================
@@ -570,7 +571,7 @@
   }
 
   // ============================================================
-  // STATUS CLICK HANDLER
+  // EVENT LISTENER
   // ============================================================
   $("#attBody").addEventListener("click", async (e) => {
     const btn = e.target.closest(".status-btn");
@@ -579,21 +580,16 @@
       const s = btn.dataset.s;
       const attendance = getDateAttendance();
 
-      // Toggle: klik status yang sama = hapus status
       const newStatus = (attendance[i] === s) ? null : s;
-
-      // Update local state dulu
       const prevStatus = attendance[i];
       attendance[i] = newStatus;
 
-      // Update UI tombol langsung (responsive)
       const group = btn.parentElement;
       group.querySelectorAll(".status-btn").forEach(b => {
         b.classList.remove("active-H", "active-S", "active-I", "active-A");
         if (attendance[i] === b.dataset.s) b.classList.add("active-" + b.dataset.s);
       });
 
-      // Simpan ke IndexedDB
       try {
         await db.upsert(currentDateKey, i, newStatus);
         if (newStatus) {
@@ -603,7 +599,6 @@
         }
       } catch (err) {
         console.error("Gagal simpan DB:", err);
-        // Rollback state
         attendance[i] = prevStatus;
         group.querySelectorAll(".status-btn").forEach(b => {
           b.classList.remove("active-H", "active-S", "active-I", "active-A");
@@ -616,7 +611,6 @@
       return;
     }
 
-    // Upload foto
     const photoBtn = e.target.closest("[data-photo]");
     if (photoBtn) {
       const idx = +photoBtn.dataset.photo;
@@ -676,9 +670,6 @@
     lucide.createIcons();
   }
 
-  // ============================================================
-  // DAILY RECAP
-  // ============================================================
   function renderRecap() {
     const grid = $("#recapGrid");
     grid.innerHTML = "";
@@ -801,7 +792,6 @@
       });
 
     } else {
-      // Per siswa
       const monthDates = getMonthDates();
       const labels = STUDENTS.map(n => n.length > 14 ? n.slice(0, 13) + "…" : n);
       const data = STUDENTS.map((_, i) => {
@@ -877,9 +867,6 @@
     $("#monthRecapInput").value = recapMonthKey;
   }
 
-  // ============================================================
-  // REFRESH SEMUA UI
-  // ============================================================
   function refreshStats() {
     renderStatsOverview();
     renderRecap();
@@ -894,7 +881,7 @@
   }
 
   // ============================================================
-  // EXPORT EXCEL - HARIAN
+  // EXPORT EXCEL - HARIAN (FITUR BARU)
   // ============================================================
   function exportHarian() {
     if (!window.XLSX) {
@@ -903,65 +890,48 @@
     }
 
     const attendance = getDateAttendance();
-    const displayDate = formatDate(getDateFromKey(currentDateKey));
-    let h = 0, s = 0, ii = 0, a = 0, belum = 0;
-    attendance.forEach(v => {
-      if (v === "H") h++; else if (v === "S") s++; else if (v === "I") ii++; else if (v === "A") a++; else belum++;
+    const displayDate = formatDate(getDateFromKey(currentDateKey)); 
+    
+    // Setup format tabel harian rapi
+    const wsData = [
+      ["REKAPITULASI ABSENSI HARIAN - SMK YADIKA 13"],
+      ["Kelas: X TKJ 2", "", "Wali Kelas: Engglin Angela T.H., S.Kom"],
+      [`Periode Ekspor: ${displayDate}`],
+      [],
+      ["No", "Nama Siswa", "Hari, Tanggal, Tahun", "Keterangan"]
+    ];
+
+    STUDENTS.forEach((name, i) => {
+      const status = attendance[i];
+      let ket = "Belum diisi";
+      if(status === "H") ket = "Hadir";
+      else if(status === "S") ket = "Sakit";
+      else if(status === "I") ket = "Izin";
+      else if(status === "A") ket = "Alpha";
+
+      wsData.push([i + 1, name, displayDate, ket]);
     });
-    const pctH = STUDENTS.length > 0 ? Math.round((h / STUDENTS.length) * 100) : 0;
 
     const wb = window.XLSX.utils.book_new();
-
-    // ─── Sheet 1: Daftar Absensi ───────────────────────────────
-    const wsData = [
-      ["ABSENSI HARIAN - SMK YADIKA 13"],
-      ["Kelas: X TKJ 2", "", "Wali Kelas: Engglin Angela T.H., S.Kom"],
-      [`Tanggal: ${displayDate}`],
-      [],
-      ["No", "Nama Siswa", "Status", "Keterangan"],
-      ...STUDENTS.map((name, i) => {
-        const status = attendance[i] || "-";
-        const ket = { H: "Hadir", S: "Sakit", I: "Izin", A: "Alpa", "-": "Belum diisi" }[status] || "-";
-        return [i + 1, name, status, ket];
-      }),
-      [],
-      ["── REKAPITULASI ────────────────────────"],
-      ["Hadir", h, "Sakit", s, "Izin", ii, "Alpa", a, "Belum Diisi", belum],
-      ["Total Siswa", STUDENTS.length, "% Kehadiran", pctH + "%"],
+    const ws = window.XLSX.utils.aoa_to_sheet(wsData);
+    
+    // Layout columns
+    ws["!cols"] = [{ wch: 5 }, { wch: 35 }, { wch: 28 }, { wch: 15 }];
+    
+    // Merge & Styling dasar (SheetJS Basic Header)
+    ws["!merges"] = [
+      { s: { r: 0, c: 0 }, e: { r: 0, c: 3 } },
+      { s: { r: 1, c: 0 }, e: { r: 1, c: 1 } },
+      { s: { r: 2, c: 0 }, e: { r: 2, c: 3 } }
     ];
 
-    const ws1 = window.XLSX.utils.aoa_to_sheet(wsData);
-    ws1["!cols"] = [{ wch: 5 }, { wch: 35 }, { wch: 10 }, { wch: 15 }];
-    ws1["!merges"] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: 3 } }];
-    window.XLSX.utils.book_append_sheet(wb, ws1, "Absensi Harian");
-
-    // ─── Sheet 2: Rekap per Status ────────────────────────────
-    const hadir = STUDENTS.filter((_, i) => attendance[i] === "H");
-    const sakit = STUDENTS.filter((_, i) => attendance[i] === "S");
-    const izin = STUDENTS.filter((_, i) => attendance[i] === "I");
-    const alpa = STUDENTS.filter((_, i) => attendance[i] === "A");
-    const maxLen = Math.max(hadir.length, sakit.length, izin.length, alpa.length, 1);
-    const ws2Data = [
-      [`Rekap Status - ${displayDate}`],
-      [],
-      ["HADIR", "SAKIT", "IZIN", "ALPA"],
-      ...Array.from({ length: maxLen }, (_, i) => [
-        hadir[i] || "", sakit[i] || "", izin[i] || "", alpa[i] || ""
-      ]),
-      [],
-      ["Total", hadir.length, sakit.length, izin.length, alpa.length]
-    ];
-    const ws2 = window.XLSX.utils.aoa_to_sheet(ws2Data);
-    ws2["!cols"] = [{ wch: 35 }, { wch: 35 }, { wch: 35 }, { wch: 35 }];
-    window.XLSX.utils.book_append_sheet(wb, ws2, "Per Status");
-
-    window.XLSX.writeFile(wb, `Absensi_Harian_${currentDateKey}.xlsx`);
-    toast("✅ Export Excel harian berhasil!", "success");
+    window.XLSX.utils.book_append_sheet(wb, ws, "Absensi Harian");
+    window.XLSX.writeFile(wb, `Absensi_Harian_XTKJ2_${currentDateKey}.xlsx`);
+    toast("✅ Export Excel harian berhasil diunduh!", "success");
   }
 
   // ============================================================
-  // EXPORT EXCEL - BULANAN (6 Sheet: Ringkasan, Data Harian,
-  //   Rekap Status, Rekap Kehadiran, Statistik Harian, Analisis)
+  // EXPORT EXCEL - BULANAN (UPGRADE ANALISIS & % STATUS)
   // ============================================================
   function exportBulanan() {
     if (!window.XLSX) {
@@ -1004,22 +974,26 @@
     const wb = window.XLSX.utils.book_new();
 
     // ── SHEET 1: RINGKASAN UMUM ──────────────────────────────────
-    const h1 = ["No","Nama Siswa","Hadir","Sakit","Izin","Alpa","Total Hari","% Kehadiran"];
+    const h1 = ["No","Nama Siswa","Hadir","Sakit","Izin","Alpa","Total Hari","% Hadir","% Sakit","% Izin","% Alpha"];
     const rows1 = STUDENTS.map((name, i) => {
       let h=0,s=0,ii=0,a=0;
       monthDates.forEach(dk => { if(attendanceByDate[dk]){const v=attendanceByDate[dk][i]; if(v==="H")h++;else if(v==="S")s++;else if(v==="I")ii++;else if(v==="A")a++;}});
-      const total=h+s+ii+a; const pct=total?Number((h/total*100).toFixed(2)):0;
-      return [i+1,name,h,s,ii,a,total,pct];
+      const total=h+s+ii+a; 
+      const pctH=total?Number((h/total*100).toFixed(2)):0;
+      const pctS=total?Number((s/total*100).toFixed(2)):0;
+      const pctI=total?Number((ii/total*100).toFixed(2)):0;
+      const pctA=total?Number((a/total*100).toFixed(2)):0;
+      return [i+1,name,h,s,ii,a,total,pctH,pctS,pctI,pctA];
     });
     const ws1 = window.XLSX.utils.aoa_to_sheet([["RINGKASAN ABSENSI KELAS X TKJ 2"],["Periode: "+monthName],[],h1,...rows1]);
-    ws1["!cols"] = [{wch:5},{wch:32},{wch:8},{wch:8},{wch:8},{wch:8},{wch:12},{wch:14}];
-    ws1["!autofilter"] = { ref:`A4:H${4+rows1.length}` };
+    ws1["!cols"] = [{wch:5},{wch:32},{wch:8},{wch:8},{wch:8},{wch:8},{wch:12},{wch:12},{wch:12},{wch:12},{wch:12}];
+    ws1["!autofilter"] = { ref:`A4:K${4+rows1.length}` };
     applyStyle(ws1,0,0,S_TITLE);
-    styleRow(ws1,3,[S_HEADER,S_HEADER,S_HEADER,S_HEADER,S_HEADER,S_HEADER,S_HEADER,S_HEADER]);
+    styleRow(ws1,3,Array(11).fill(S_HEADER));
     rows1.forEach((row,ri) => {
       const ri2=4+ri;
-      [S_DATA_C,S_DATA,S_DATA_C,S_DATA_C,S_DATA_C,S_DATA_C,S_DATA_C,S_PCT].forEach((st,ci)=>applyStyle(ws1,ri2,ci,st));
-      setPct(ws1,ri2,7);
+      [S_DATA_C,S_DATA,S_DATA_C,S_DATA_C,S_DATA_C,S_DATA_C,S_DATA_C,S_PCT,S_PCT,S_PCT,S_PCT].forEach((st,ci)=>applyStyle(ws1,ri2,ci,st));
+      [7,8,9,10].forEach(col=>setPct(ws1,ri2,col));
     });
     window.XLSX.utils.book_append_sheet(wb, ws1, "1. Ringkasan");
 
@@ -1034,29 +1008,40 @@
     window.XLSX.utils.book_append_sheet(wb, ws2, "2. Data Harian");
 
     // ── SHEET 3: REKAP STATUS ────────────────────────────────────
-    const h3 = ["No","Nama Siswa","Hadir","Sakit","Izin","Alpha"];
+    const h3 = ["No","Nama Siswa","Hadir","Sakit","Izin","Alpha","% Sakit","% Izin","% Alpha"];
     const rows3 = STUDENTS.map((name,i) => {
       let h=0,s=0,ii=0,a=0;
       monthDates.forEach(dk=>{ if(attendanceByDate[dk]){const v=attendanceByDate[dk][i];if(v==="H")h++;else if(v==="S")s++;else if(v==="I")ii++;else if(v==="A")a++;}});
-      return [i+1,name,h,s,ii,a];
+      const total=h+s+ii+a; 
+      const pctS=total?Number((s/total*100).toFixed(2)):0;
+      const pctI=total?Number((ii/total*100).toFixed(2)):0;
+      const pctA=total?Number((a/total*100).toFixed(2)):0;
+      return [i+1,name,h,s,ii,a,pctS,pctI,pctA];
     });
     const ws3 = window.XLSX.utils.aoa_to_sheet([["REKAP STATUS SISWA"],["Periode: "+monthName],[],h3,...rows3]);
-    ws3["!cols"] = [{wch:5},{wch:32},{wch:10},{wch:10},{wch:10},{wch:10}];
-    ws3["!autofilter"] = { ref:`A4:F${4+rows3.length}` };
+    ws3["!cols"] = [{wch:5},{wch:32},{wch:10},{wch:10},{wch:10},{wch:10},{wch:12},{wch:12},{wch:12}];
+    ws3["!autofilter"] = { ref:`A4:I${4+rows3.length}` };
     applyStyle(ws3,0,0,S_TITLE);
     styleRow(ws3,3,h3.map(()=>S_HEADER));
-    rows3.forEach((_,ri) => { const ri2=4+ri; [S_DATA_C,S_DATA,S_DATA_C,S_DATA_C,S_DATA_C,S_DATA_C].forEach((st,ci)=>applyStyle(ws3,ri2,ci,st)); });
+    rows3.forEach((_,ri) => { 
+      const ri2=4+ri; 
+      [S_DATA_C,S_DATA,S_DATA_C,S_DATA_C,S_DATA_C,S_DATA_C,S_PCT,S_PCT,S_PCT].forEach((st,ci)=>applyStyle(ws3,ri2,ci,st)); 
+      [6,7,8].forEach(col=>setPct(ws3,ri2,col));
+    });
     window.XLSX.utils.book_append_sheet(wb, ws3, "3. Rekap Status");
 
     // ── SHEET 4: REKAP KEHADIRAN KOMPREHENSIF ────────────────────
-    const h4 = ["No","Nama Siswa","Jumlah Hadir","Persentase Kehadiran (%)","Jumlah Tidak Hadir (A+S+I)","Persentase Ketidakhadiran (%)","Jumlah Izin","Jumlah Sakit","Jumlah Alpha"];
+    const h4 = ["No","Nama Siswa","Jumlah Hadir","Persentase Kehadiran (%)","Jumlah Tidak Hadir (A+S+I)","Persentase Ketidakhadiran (%)","% Izin","% Sakit","% Alpha"];
     const rows4 = STUDENTS.map((name,i) => {
       let h=0,s=0,ii=0,a=0;
       monthDates.forEach(dk=>{ if(attendanceByDate[dk]){const v=attendanceByDate[dk][i];if(v==="H")h++;else if(v==="S")s++;else if(v==="I")ii++;else if(v==="A")a++;}});
       const total=h+s+ii+a; const absent=s+ii+a;
       const pctH=total?Number((h/total*100).toFixed(2)):0;
-      const pctA=total?Number((absent/total*100).toFixed(2)):0;
-      return [i+1,name,h,pctH,absent,pctA,ii,s,a];
+      const pctA_Total=total?Number((absent/total*100).toFixed(2)):0;
+      const pctS=total?Number((s/total*100).toFixed(2)):0;
+      const pctI=total?Number((ii/total*100).toFixed(2)):0;
+      const pctA=total?Number((a/total*100).toFixed(2)):0;
+      return [i+1,name,h,pctH,absent,pctA_Total,pctI,pctS,pctA];
     });
     const ws4 = window.XLSX.utils.aoa_to_sheet([["REKAP KEHADIRAN KOMPREHENSIF"],["Periode: "+monthName],[],h4,...rows4]);
     ws4["!cols"] = [{wch:5},{wch:32},{wch:14},{wch:26},{wch:26},{wch:28},{wch:14},{wch:14},{wch:14}];
@@ -1064,12 +1049,12 @@
     applyStyle(ws4,0,0,S_TITLE);
     styleRow(ws4,3,h4.map(()=>S_HEADER));
     rows4.forEach((row,ri) => {
-      const ri2=4+ri; const alpha=row[8]; const pctH=row[3];
-      const isAlert = alpha>3 || pctH<85;
+      const ri2=4+ri; const alphaPct=row[8]; const pctH=row[3];
+      const isAlert = alphaPct>15 || pctH<85; // Menyorot berdasarkan metrik
       row.forEach((_,ci) => {
         if (isAlert) { applyStyle(ws4,ri2,ci,ci===1?S_RED_TXT:S_RED); }
         else if (ci===1) { applyStyle(ws4,ri2,ci,S_DATA); }
-        else if (ci===3||ci===5) { applyStyle(ws4,ri2,ci,S_PCT); setPct(ws4,ri2,ci); }
+        else if (ci>=3 && ci!==4) { applyStyle(ws4,ri2,ci,S_PCT); setPct(ws4,ri2,ci); }
         else { applyStyle(ws4,ri2,ci,S_DATA_C); }
       });
     });
@@ -1077,7 +1062,7 @@
 
     // ── SHEET 5: STATISTIK HARIAN ────────────────────────────────
     const statsDays = ["Senin","Selasa","Rabu","Kamis","Jumat"];
-    const h5 = ["Hari","Jumlah Hadir","Jumlah Izin","Jumlah Sakit","Jumlah Alpha","Total Absensi","Persentase Hadir (%)","Persentase Tidak Hadir (%)"];
+    const h5 = ["Hari","Jumlah Hadir","Jumlah Izin","Jumlah Sakit","Jumlah Alpha","Total Absensi","% Hadir","% Tdk Hadir","% Izin","% Sakit","% Alpha"];
     const dailyStats = statsDays.map(dayName => {
       let h=0,ii=0,s=0,a=0;
       monthDates.forEach(dk => {
@@ -1087,71 +1072,137 @@
       });
       const total=h+ii+s+a;
       const pctH=total?Number((h/total*100).toFixed(2)):0;
-      const pctA=total?Number(((ii+s+a)/total*100).toFixed(2)):0;
-      return [dayName,h,ii,s,a,total,pctH,pctA];
+      const pctA_Tot=total?Number(((ii+s+a)/total*100).toFixed(2)):0;
+      const pctI=total?Number((ii/total*100).toFixed(2)):0;
+      const pctS=total?Number((s/total*100).toFixed(2)):0;
+      const pctA=total?Number((a/total*100).toFixed(2)):0;
+      return [dayName,h,ii,s,a,total,pctH,pctA_Tot,pctI,pctS,pctA];
     });
+    
+    // Rata-rata dari kolom persentase
     const avgH5 = Number((dailyStats.reduce((acc,r)=>acc+r[6],0)/dailyStats.length).toFixed(2));
-    const avgA5 = Number((dailyStats.reduce((acc,r)=>acc+r[7],0)/dailyStats.length).toFixed(2));
-    const avgRow5 = ["TOTAL RATA-RATA","","","","","",avgH5,avgA5];
+    const avgA_Tot5 = Number((dailyStats.reduce((acc,r)=>acc+r[7],0)/dailyStats.length).toFixed(2));
+    const avgI5 = Number((dailyStats.reduce((acc,r)=>acc+r[8],0)/dailyStats.length).toFixed(2));
+    const avgS5 = Number((dailyStats.reduce((acc,r)=>acc+r[9],0)/dailyStats.length).toFixed(2));
+    const avgA5 = Number((dailyStats.reduce((acc,r)=>acc+r[10],0)/dailyStats.length).toFixed(2));
+    
+    const avgRow5 = ["TOTAL RATA-RATA","","","","","",avgH5,avgA_Tot5,avgI5,avgS5,avgA5];
     const ws5 = window.XLSX.utils.aoa_to_sheet([["STATISTIK HARIAN (SENIN–JUMAT)"],["Periode: "+monthName],[],h5,...dailyStats,avgRow5]);
-    ws5["!cols"] = [{wch:16},{wch:14},{wch:14},{wch:14},{wch:14},{wch:16},{wch:24},{wch:26}];
-    ws5["!autofilter"] = { ref:`A4:H${4+dailyStats.length}` };
+    ws5["!cols"] = [{wch:16},{wch:14},{wch:14},{wch:14},{wch:14},{wch:16},{wch:12},{wch:14},{wch:12},{wch:12},{wch:12}];
+    ws5["!autofilter"] = { ref:`A4:K${4+dailyStats.length}` };
     applyStyle(ws5,0,0,S_TITLE);
     styleRow(ws5,3,h5.map(()=>S_HEADER));
     dailyStats.forEach((_,ri) => {
       const ri2=4+ri;
-      [S_DATA_C,S_DATA_C,S_DATA_C,S_DATA_C,S_DATA_C,S_DATA_C,S_PCT,S_PCT].forEach((st,ci)=>{ applyStyle(ws5,ri2,ci,st); if(ci>=6)setPct(ws5,ri2,ci); });
+      [S_DATA_C,S_DATA_C,S_DATA_C,S_DATA_C,S_DATA_C,S_DATA_C,S_PCT,S_PCT,S_PCT,S_PCT,S_PCT].forEach((st,ci)=>{ applyStyle(ws5,ri2,ci,st); if(ci>=6)setPct(ws5,ri2,ci); });
     });
     const avgRowIdx5 = 4+dailyStats.length;
     h5.forEach((_,ci)=>applyStyle(ws5,avgRowIdx5,ci,S_AVG));
-    [6,7].forEach(ci=>setPct(ws5,avgRowIdx5,ci));
+    [6,7,8,9,10].forEach(ci=>setPct(ws5,avgRowIdx5,ci));
     window.XLSX.utils.book_append_sheet(wb, ws5, "5. Statistik Harian");
 
-    // ── SHEET 6: ANALISIS POLA & EVALUASI ────────────────────────
-    const h6a = ["Nama Siswa","Jumlah Absen","Hari/Frekuensi","Pola Ketidakhadiran","Identifikasi Alasan/Indikasi"];
-    const rows6 = STUDENTS.map((name,i) => {
-      let totalAbsen=0; const dc={"Senin":0,"Selasa":0,"Rabu":0,"Kamis":0,"Jumat":0};
-      monthDates.forEach(dk=>{ if(attendanceByDate[dk]&&attendanceByDate[dk][i]&&attendanceByDate[dk][i]!=="H"){totalAbsen++;const dn=DAY_NAMES[getDateFromKey(dk).getDay()];if(dc[dn]!==undefined)dc[dn]++;} });
-      const topDay=Object.keys(dc).reduce((a,b)=>dc[a]>dc[b]?a:b);
-      const pattern=totalAbsen>0?"Sering Absen hari "+topDay:"Teratur";
-      let indication="-";
-      if(totalAbsen>0){
-        if(topDay==="Senin")indication="Kecenderungan sulit transisi hari libur";
-        else if(topDay==="Jumat")indication="Kecenderungan libur lebih awal";
-        else if(topDay==="Rabu")indication="Titik tengah minggu, kelelahan akumulatif";
-        else indication="Faktor kesehatan/keperluan mendadak";
-      }
-      return [name,totalAbsen,topDay,pattern,indication];
+    // ── SHEET 6: ANALISIS POLA & EVALUASI (ENHANCED ALGORITHM) ───
+    const h6a = ["Nama Siswa","Total Absen (Hari)","% Alpha","Hari Puncak Absen","Pola Ketidakhadiran","Identifikasi Peringatan Dini / Saran Wali Kelas"];
+    
+    // Dapatkan baseline kelas untuk perbandingan Cerdas
+    let sumAlphaPct=0, sumSakitPct=0;
+    STUDENTS.forEach((_,i) => {
+      let sa=0, ss=0, tot=0;
+      monthDates.forEach(dk=>{ if(attendanceByDate[dk]&&attendanceByDate[dk][i]){ tot++; const v=attendanceByDate[dk][i]; if(v==="A")sa++; if(v==="S")ss++; }});
+      sumAlphaPct += tot ? (sa/tot*100) : 0;
+      sumSakitPct += tot ? (ss/tot*100) : 0;
     });
-    const h6b = ["Kategori Hari","Daftar Siswa Terkait","Analisis Penyebab Potensial"];
+    const classAvgAlpha = sumAlphaPct / STUDENTS.length;
+    const classAvgSakit = sumSakitPct / STUDENTS.length;
+
+    const rows6 = STUDENTS.map((name,i) => {
+      let totalAbsen=0, a=0, s=0, ii=0, totalDay=0; 
+      const dc={"Senin":0,"Selasa":0,"Rabu":0,"Kamis":0,"Jumat":0};
+      
+      monthDates.forEach(dk=>{ 
+        if(attendanceByDate[dk]&&attendanceByDate[dk][i]){
+          totalDay++;
+          const v = attendanceByDate[dk][i];
+          if(v!=="H"){
+            totalAbsen++;
+            if(v==="A") a++;
+            if(v==="S") s++;
+            if(v==="I") ii++;
+            const dn=DAY_NAMES[getDateFromKey(dk).getDay()];
+            if(dc[dn]!==undefined) dc[dn]++;
+          }
+        } 
+      });
+      
+      const pctA = totalDay ? Number((a/totalDay*100).toFixed(2)) : 0;
+      const topDay = Object.keys(dc).reduce((max,curr) => dc[curr] > dc[max] ? curr : max);
+      
+      let pattern="Teratur";
+      let indication="Kondisi kehadiran stabil dan kooperatif. Pertahankan.";
+
+      if(totalAbsen>0){
+        // Logic Early Warning System (EWS)
+        if (a >= 3 || pctA > (classAvgAlpha + 10)) {
+           pattern = "Alpha Melebihi Batas";
+           indication = "🚨 PERINGATAN DINI: Terdeteksi frekuensi bolos tinggi (Di atas rata-rata kelas). Sangat disarankan pemanggilan SP/Wali Murid segera untuk investigasi.";
+        } else if (s > 4 || (s/totalDay*100) > (classAvgSakit + 15)) {
+           pattern = "Kerentanan Kesehatan (Sakit)";
+           indication = "Pemantauan Khusus: Frekuensi sakit tinggi. Disarankan komunikasi persuasif dengan orang tua mengenai kondisi fisik dan gizi anak.";
+        } else if (dc[topDay] >= 2 && topDay==="Senin") {
+           pattern = "Post-Weekend Syndrome (Senin)";
+           indication = "Indikasi kesulitan transisi ke rutinitas sekolah usai libur. Pendekatan motivasi dan kedisiplinan pagi diperlukan.";
+        } else if (dc[topDay] >= 2 && topDay==="Jumat") {
+           pattern = "Pre-Weekend Syndrome (Jumat)";
+           indication = "Kecenderungan pulang dini atau bolos jelang akhir pekan. Wali kelas & guru piket disarankan mengawasi presensi akhir di hari Jumat.";
+        } else if (ii > 2) {
+           pattern = "Sering Izin";
+           indication = "Tingkat izin di luar kewajaran. Perlu evaluasi kembali validitas surat izin yang diberikan.";
+        } else {
+           pattern = "Ketidakhadiran Sporadis";
+           indication = "Masih dalam batas wajar karena keperluan insidental atau kesehatan. Terus dipantau secara berkala.";
+        }
+      }
+      return [name,totalAbsen,pctA,topDay,pattern,indication];
+    });
+
+    const h6b = ["Fokus Hari Kerja","Identifikasi Indikasi Kolektif","Rekomendasi Tindakan Kelas"];
     const focusRows = statsDays.map(day => {
-      const listSiswa = STUDENTS.filter((_,i) => {
+      let badHabitCount = 0;
+      STUDENTS.forEach((_,i) => {
         let cnt=0;
         monthDates.forEach(dk=>{ if(DAY_NAMES[getDateFromKey(dk).getDay()]===day&&attendanceByDate[dk]&&attendanceByDate[dk][i]&&attendanceByDate[dk][i]!=="H")cnt++; });
-        return cnt>1;
-      }).slice(0,5).join(", ");
-      let analysis="Analisis umum ketidakhadiran";
-      if(day==="Senin")analysis="Kecenderungan sulit transisi hari libur";
-      else if(day==="Jumat")analysis="Kecenderungan libur lebih awal";
-      else if(day==="Rabu")analysis="Titik tengah minggu, kelelahan akumulatif";
-      return ["Fokus Hari "+day, listSiswa||"-", analysis];
+        if(cnt>=2) badHabitCount++;
+      });
+      
+      let indikasi="", rek="";
+      if(day==="Senin") { indikasi=`${badHabitCount} Siswa teridentifikasi sering absen Senin. Masalah transisi pasca libur.`; rek="Adakan sesi motivasi/briefing khusus di Senin pagi."; }
+      else if(day==="Jumat") { indikasi=`${badHabitCount} Siswa teridentifikasi bolos Jumat. Hasrat libur awal.`; rek="Razia presensi di jam terakhir. Evaluasi jadwal ekskul Jumat."; }
+      else if(day==="Rabu") { indikasi=`Akumulasi kelelahan mid-week (${badHabitCount} siswa berisiko).`; rek="Pastikan beban PR tidak menumpuk berlebihan di hari Selasa/Rabu."; }
+      else { indikasi="Normal"; rek="-"; }
+
+      return ["Evaluasi Hari "+day, indikasi, rek];
     });
 
     const focusTitleIdx = 4+rows6.length+1;
     const ws6 = window.XLSX.utils.aoa_to_sheet([
-      ["ANALISIS POLA & EVALUASI KETIDAKHADIRAN"],["Periode: "+monthName],[],
+      ["SISTEM ANALISIS POLA & PERINGATAN DINI KETIDAKHADIRAN"],["Periode: "+monthName],[],
       h6a,...rows6,
       [],
-      ["ANALISIS FOKUS KETIDAKHADIRAN BERDASARKAN HARI"],
+      ["ANALISIS RISIKO KOLEKTIF BERDASARKAN HARI"],
       h6b,...focusRows
     ]);
-    ws6["!cols"] = [{wch:30},{wch:14},{wch:18},{wch:32},{wch:48}];
-    ws6["!autofilter"] = { ref:`A4:E${4+rows6.length}` };
+    ws6["!cols"] = [{wch:30},{wch:18},{wch:14},{wch:18},{wch:30},{wch:75}];
+    ws6["!autofilter"] = { ref:`A4:F${4+rows6.length}` };
     applyStyle(ws6,0,0,S_TITLE);
     styleRow(ws6,3,h6a.map(()=>S_HEADER));
-    rows6.forEach((_,ri) => {
+    rows6.forEach((row,ri) => {
       const ri2=4+ri;
-      [S_DATA,S_DATA_C,S_DATA_C,S_DATA,S_DATA].forEach((st,ci)=>applyStyle(ws6,ri2,ci,st));
+      [S_DATA,S_DATA_C,S_PCT,S_DATA_C,S_DATA,S_DATA].forEach((st,ci)=>applyStyle(ws6,ri2,ci,st));
+      setPct(ws6,ri2,2);
+      if(row[2] >= 15 || row[4].includes("Melebihi Batas")) {
+         applyStyle(ws6,ri2,4,S_RED);
+         applyStyle(ws6,ri2,5,S_RED_TXT);
+      }
     });
     applyStyle(ws6,focusTitleIdx,0,S_TITLE);
     styleRow(ws6,focusTitleIdx+1,h6b.map(()=>S_HEADER));
@@ -1159,19 +1210,16 @@
       const ri2=focusTitleIdx+2+ri;
       [S_DATA_C,S_DATA,S_DATA].forEach((st,ci)=>applyStyle(ws6,ri2,ci,st));
     });
-    window.XLSX.utils.book_append_sheet(wb, ws6, "6. Analisis Pola");
+    window.XLSX.utils.book_append_sheet(wb, ws6, "6. Analisis Pola (EWS)");
 
     // ── Tulis file ───────────────────────────────────────────────
-    const fileName = `Rekap_absensi ${monthPlainName} ${year}.xlsx`;
+    const fileName = `Rekap_absensi_XTKJ2_${monthPlainName}_${year}.xlsx`;
     window.XLSX.writeFile(wb, fileName, { cellStyles: true });
-    toast(`✅ Berhasil! File "${fileName}" siap diunduh.`, "success");
+    toast(`✅ Ekspor berhasil! File "${fileName}" siap dibuka.`, "success");
   }
-  // === END exportBulanan ===
-  // (kode lama dihapus untuk menghindari duplikasi workbook)
-
 
   // ============================================================
-  // NAVIGASI TANGGAL
+  // NAVIGASI
   // ============================================================
   $("#btnPrevDay").addEventListener("click", () => {
     const d = getDateFromKey(currentDateKey);
@@ -1201,9 +1249,6 @@
     }
   });
 
-  // ============================================================
-  // NAVIGASI BULAN REKAP
-  // ============================================================
   $("#monthRecapInput").addEventListener("change", () => {
     const val = $("#monthRecapInput").value;
     if (val) { recapMonthKey = val; renderMonthly(); }
@@ -1225,9 +1270,6 @@
     renderMonthly();
   });
 
-  // ============================================================
-  // CHART MODE
-  // ============================================================
   $("#chartMode").addEventListener("change", renderChart);
 
   // ============================================================
@@ -1235,20 +1277,16 @@
   // ============================================================
   $("#btnFillAll").addEventListener("click", async () => {
     const att = getDateAttendance();
-
-    // Siapkan records untuk upsert batch
     const records = STUDENTS.map((_, i) => ({
       date: currentDateKey,
       student_index: i,
       status: "H"
     }));
 
-    // Update local state
     records.forEach(r => { att[r.student_index] = "H"; });
     renderTable();
     refreshStats();
 
-    // Simpan ke database
     try {
       await db.upsertBatch(records);
       toast(`Semua ${STUDENTS.length} siswa ditandai Hadir ✓`, "success");
@@ -1260,7 +1298,6 @@
 
   $("#btnResetToday").addEventListener("click", async () => {
     const att = getDateAttendance();
-    // Hapus semua status hari ini
     const records = STUDENTS.map((_, i) => ({
       date: currentDateKey,
       student_index: i,
@@ -1277,17 +1314,16 @@
     }
   });
 
-  // Export button
+  // Action Buttons Export
+  $("#btnExportHarian").addEventListener("click", exportHarian);
   $("#btnExportBulanan").addEventListener("click", exportBulanan);
 
   // ============================================================
   // INIT APLIKASI
   // ============================================================
-  // Render UI langsung tanpa menunggu database
   document.getElementById("yr").textContent = new Date().getFullYear();
   refreshAll();
 
-  // Load database di background (tidak memblokir tampilan)
   (async () => {
     setDbStatus("connecting");
     try {
@@ -1320,11 +1356,10 @@
       setDbStatus("connected");
       console.log(`✅ Database dimuat: ${records.length} record absensi`);
 
-      // Refresh UI setelah data DB masuk
       if (records.length > 0) refreshAll();
 
     } catch (err) {
-      console.error("Gagal inisialisasi IndexedDB:", err);
+      console.error("Gagal inisialisasi database:", err);
       setDbStatus("error");
     }
   })();
