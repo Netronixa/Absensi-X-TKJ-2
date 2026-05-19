@@ -269,9 +269,9 @@
         </div>
       </section>
 
-      <section class="card rounded-2xl p-5 sm:p-6 mb-8">
+      <section class="card rounded-2xl p-4 sm:p-5 mb-8">
         <div class="flex items-center gap-2 mb-5">
-          <i data-lucide="bar-chart-3" class="w-5 h-5 text-indigo-600"></i>
+          <i data-lucide="clipboard-list" class="w-5 h-5 text-indigo-600"></i>
           <h2 class="font-display text-xl font-bold text-slate-900">Rekapitulasi Harian</h2>
         </div>
         <div id="recapGrid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4"></div>
@@ -690,11 +690,11 @@
           <div class="flex items-center justify-between bg-emerald-50 px-3 py-2 rounded-lg border border-emerald-200">
             <span class="font-semibold text-emerald-700">Hadir</span><span class="font-bold text-emerald-800 text-base">${h}</span>
           </div>
-          <div class="flex items-center justify-between bg-amber-50 px-3 py-2 rounded-lg border border-amber-200">
-            <span class="font-semibold text-amber-700">Sakit</span><span class="font-bold text-amber-800 text-base">${s}</span>
-          </div>
           <div class="flex items-center justify-between bg-blue-50 px-3 py-2 rounded-lg border border-blue-200">
-            <span class="font-semibold text-blue-700">Izin</span><span class="font-bold text-blue-800 text-base">${ii}</span>
+            <span class="font-semibold text-blue-700">Sakit</span><span class="font-bold text-blue-800 text-base">${s}</span>
+          </div>
+          <div class="flex items-center justify-between bg-amber-50 px-3 py-2 rounded-lg border border-amber-200">
+            <span class="font-semibold text-amber-700">Izin</span><span class="font-bold text-amber-800 text-base">${ii}</span>
           </div>
           <div class="flex items-center justify-between bg-red-50 px-3 py-2 rounded-lg border border-red-200">
             <span class="font-semibold text-red-700">Alpa</span><span class="font-bold text-red-800 text-base">${a}</span>
@@ -810,6 +810,9 @@
     }
   }
 
+  // ============================================================
+  // CHART CONFIG OPTIONS GRAPH
+  // ============================================================
   function chartOpts(yTitle) {
     return {
       responsive: true, maintainAspectRatio: false,
@@ -841,7 +844,7 @@
         }
       });
       const total = h + s + ii + a;
-      const pct = total ? Math.round((h / total) * 100) : 0;
+      const pct = total ? Number((h / total * 100).toFixed(2)) : 0;
       const pctColor = pct >= 80 ? "#dbeafe" : pct >= 60 ? "#fef3c7" : "#fee2e2";
       const pctTextColor = pct >= 80 ? "#0369a1" : pct >= 60 ? "#b45309" : "#991b1b";
 
@@ -921,7 +924,7 @@
   }
 
   // ============================================================
-  // EXPORT METODE: MONTHLY ENGINE (RUMUS COUNTIF VALID & FIXED)
+  // EXPORT METODE: MONTHLY ENGINE (RUMUS EXCEL DINAMIS & 100% SINKRON)
   // ============================================================
   function exportBulanan() {
     if (!window.XLSX) {
@@ -929,7 +932,6 @@
       return;
     }
 
-    // Ambil data tanggal berdasarkan filter "recapMonthKey" aktif dari user input bulan rekap
     const monthDates = getRecapMonthDates();
     const totalDays = monthDates.length;
     const [year, month] = recapMonthKey.split('-').map(Number);
@@ -937,7 +939,6 @@
     const monthName  = monthObj.toLocaleDateString("id-ID", { month: "long", year: "numeric" });
     const monthPlainName = monthObj.toLocaleDateString("id-ID", { month: "long" });
 
-    // Konversi nomor indeks kolom ke kode huruf spreadsheet (0->A, 1->B, 2->C, dst)
     function getExcelColumnName(colIndex) {
       let columnName = "";
       while (colIndex >= 0) {
@@ -947,11 +948,13 @@
       return columnName;
     }
 
-    // Menentukan letak rentang kolom harian di Sheet '2. Data Harian'
     const firstDataCol = "C";
     const lastDataCol = getExcelColumnName(1 + totalDays);
+    const colHadirLetter = getExcelColumnName(2 + totalDays);
+    const colSakitLetter = getExcelColumnName(3 + totalDays);
+    const colIzinLetter = getExcelColumnName(4 + totalDays);
+    const colAlpaLetter = getExcelColumnName(5 + totalDays);
 
-    // Style properties
     const BORDER = { style: "thin", color: { rgb: "BBBBBB" } };
     const THIN   = { top: BORDER, bottom: BORDER, left: BORDER, right: BORDER };
 
@@ -975,13 +978,20 @@
 
     const wb = window.XLSX.utils.book_new();
 
-    // ── SHEET 1: RINGKASAN UMUM ──────────────────────────────────
+    // ── SHEET 1: REPORT RINGKASAN (MENGGUNAKAN RUMUS DARI SHEET 2) ───────────────────
     const h1 = ["No","Nama Siswa","Hadir","Sakit","Izin","Alpa","Total Hari","% Kehadiran"];
     const rows1 = STUDENTS.map((name, i) => {
-      let h=0,s=0,ii=0,a=0;
-      monthDates.forEach(dk => { if(attendanceByDate[dk]){const v=attendanceByDate[dk][i]; if(v==="H")h++;else if(v==="S")s++;else if(v==="I")ii++;else if(v==="A")a++;}});
-      const total=h+s+ii+a; const pct=total?Number((h/total*100).toFixed(2)):0;
-      return [i+1,name,h,s,ii,a,total,pct];
+      const rowIdxExcel = 5 + i;
+      return [
+        i + 1,
+        name,
+        { f: `'2. Data Harian'!${colHadirLetter}${rowIdxExcel}` },
+        { f: `'2. Data Harian'!${colSakitLetter}${rowIdxExcel}` },
+        { f: `'2. Data Harian'!${colIzinLetter}${rowIdxExcel}` },
+        { f: `'2. Data Harian'!${colAlpaLetter}${rowIdxExcel}` },
+        { f: `SUM(C${rowIdxExcel}:F${rowIdxExcel})` },
+        { f: `IF(G${rowIdxExcel}>0, (C${rowIdxExcel}/G${rowIdxExcel})*100, 0)` }
+      ];
     });
     const ws1 = window.XLSX.utils.aoa_to_sheet([["RINGKASAN ABSENSI KELAS X TKJ 2"],["Periode: "+monthName],[],h1,...rows1]);
     ws1["!cols"] = [{wch:5},{wch:32},{wch:8},{wch:8},{wch:8},{wch:8},{wch:12},{wch:14}];
@@ -993,9 +1003,9 @@
       [S_DATA_C,S_DATA,S_DATA_C,S_DATA_C,S_DATA_C,S_DATA_C,S_DATA_C,S_PCT].forEach((st,ci)=>applyStyle(ws1,ri2,ci,st));
       ws1[window.XLSX.utils.encode_cell({r:ri2, c:7})].z = "0.00";
     });
-    window.XLSX.utils.book_append_sheet(wb, ws1, "1. Ringkasan");
+    window.XLSX.utils.book_append_sheet(wb, ws1, "1. Report Ringkasan");
 
-    // ── SHEET 2: DATA HARIAN + RUMUS DINAMIS COUNTIF ──────────────
+    // ── SHEET 2: DATA HARIAN (LOG ABSENSI DASAR UTAMA) ──────────────
     const h2 = ["No","Nama Siswa",...monthDates.map(dk=>dk.split('-')[2]), "Jumlah Hadir", "Jumlah Sakit", "Jumlah Izin", "Jumlah Alpha"];
     const rows2 = STUDENTS.map((name, i) => {
       return [i + 1, name, ...monthDates.map(dk => (attendanceByDate[dk] ? attendanceByDate[dk][i] || "-" : "-"))];
@@ -1007,19 +1017,17 @@
     applyStyle(ws2,0,0,S_TITLE);
     styleRow(ws2,3,h2.map(()=>S_HEADER));
 
-    // Menghitung letak kolom rumus dinamis secara presisi di kanan data harian
     rows2.forEach((_, ri) => {
-      const rowIdxExcel = 5 + ri; // Indeks baris excel (dimulai dari baris ke-5)
+      const rowIdxExcel = 5 + ri; 
       const cellHadir = window.XLSX.utils.encode_cell({ r: rowIdxExcel - 1, c: 2 + totalDays });
       const cellSakit = window.XLSX.utils.encode_cell({ r: rowIdxExcel - 1, c: 3 + totalDays });
       const cellIzin  = window.XLSX.utils.encode_cell({ r: rowIdxExcel - 1, c: 4 + totalDays });
       const cellAlpa  = window.XLSX.utils.encode_cell({ r: rowIdxExcel - 1, c: 5 + totalDays });
 
-      // Injeksi formula string ke cell object
-      ws2[cellHadir] = { t: "s", f: `COUNTIF(${firstDataCol}${rowIdxExcel}:${lastDataCol}${rowIdxExcel},"H")` };
-      ws2[cellSakit] = { t: "s", f: `COUNTIF(${firstDataCol}${rowIdxExcel}:${lastDataCol}${rowIdxExcel},"S")` };
-      ws2[cellIzin]  = { t: "s", f: `COUNTIF(${firstDataCol}${rowIdxExcel}:${lastDataCol}${rowIdxExcel},"I")` };
-      ws2[cellAlpa]  = { t: "s", f: `COUNTIF(${firstDataCol}${rowIdxExcel}:${lastDataCol}${rowIdxExcel},"A")` };
+      ws2[cellHadir] = { f: `COUNTIF(${firstDataCol}${rowIdxExcel}:${lastDataCol}${rowIdxExcel},"H")` };
+      ws2[cellSakit] = { f: `COUNTIF(${firstDataCol}${rowIdxExcel}:${lastDataCol}${rowIdxExcel},"S")` };
+      ws2[cellIzin]  = { f: `COUNTIF(${firstDataCol}${rowIdxExcel}:${lastDataCol}${rowIdxExcel},"I")` };
+      ws2[cellAlpa]  = { f: `COUNTIF(${firstDataCol}${rowIdxExcel}:${lastDataCol}${rowIdxExcel},"A")` };
 
       const fullRowLength = 2 + totalDays + 4;
       for (let ci = 0; ci < fullRowLength; ci++) {
@@ -1028,12 +1036,18 @@
     });
     window.XLSX.utils.book_append_sheet(wb, ws2, "2. Data Harian");
 
-    // ── SHEET 3: REKAP STATUS SISWA ──────────────────────────────
+    // ── SHEET 3: REKAP STATUS SISWA (MENGGUNAKAN RUMUS SHEET 1) ───────────────────────
     const h3 = ["No","Nama Siswa","Hadir","Sakit","Izin","Alpha"];
-    const rows3 = STUDENTS.map((name,i) => {
-      let h=0,s=0,ii=0,a=0;
-      monthDates.forEach(dk=>{ if(attendanceByDate[dk]){const v=attendanceByDate[dk][i];if(v==="H")h++;else if(v==="S")s++;else if(v==="I")ii++;else if(v==="A")a++;}});
-      return [i+1,name,h,s,ii,a];
+    const rows3 = STUDENTS.map((name, i) => {
+      const rowIdxExcel = 5 + i;
+      return [
+        i + 1,
+        name,
+        { f: `'1. Report Ringkasan'!C${rowIdxExcel}` },
+        { f: `'1. Report Ringkasan'!D${rowIdxExcel}` },
+        { f: `'1. Report Ringkasan'!E${rowIdxExcel}` },
+        { f: `'1. Report Ringkasan'!F${rowIdxExcel}` }
+      ];
     });
     const ws3 = window.XLSX.utils.aoa_to_sheet([["REKAP STATUS SISWA"],["Periode: "+monthName],[],h3,...rows3]);
     ws3["!cols"] = [{wch:5},{wch:32},{wch:10},{wch:10},{wch:10},{wch:10}];
@@ -1043,15 +1057,20 @@
     rows3.forEach((_,ri) => { const ri2=4+ri; [S_DATA_C,S_DATA,S_DATA_C,S_DATA_C,S_DATA_C,S_DATA_C].forEach((st,ci)=>applyStyle(ws3,ri2,ci,st)); });
     window.XLSX.utils.book_append_sheet(wb, ws3, "3. Rekap Status");
 
-    // ── SHEET 4: REKAP KEHADIRAN KOMPREHENSIF ───────────────────
+    // ── SHEET 4: REKAP KEHADIRAN KOMPREHENSIF (SINKRON RUMUS) ───────────────────
     const h4 = ["No","Nama Siswa","Jumlah Hadir","Persentase Kehadiran (%)","Persentase Ketidakhadiran (%)","Jumlah Izin","Jumlah Sakit","Jumlah Alpha"];
-    const rows4 = STUDENTS.map((name,i) => {
-      let h=0,s=0,ii=0,a=0;
-      monthDates.forEach(dk=>{ if(attendanceByDate[dk]){const v=attendanceByDate[dk][i];if(v==="H")h++;else if(v==="S")s++;else if(v==="I")ii++;else if(v==="A")a++;}});
-      const total=h+s+ii+a; const absent=s+ii+a;
-      const pctH=total?Number((h/total*100).toFixed(2)):0;
-      const pctA_Total=total?Number((absent/total*100).toFixed(2)):0;
-      return [i+1,name,h,pctH,pctA_Total,ii,s,a];
+    const rows4 = STUDENTS.map((name, i) => {
+      const rowIdxExcel = 5 + i;
+      return [
+        i + 1,
+        name,
+        { f: `'1. Report Ringkasan'!C${rowIdxExcel}` },
+        { f: `'1. Report Ringkasan'!H${rowIdxExcel}` },
+        { f: `IF('1. Report Ringkasan'!G${rowIdxExcel}>0, 100-'1. Report Ringkasan'!H${rowIdxExcel}, 0)` },
+        { f: `'1. Report Ringkasan'!E${rowIdxExcel}` },
+        { f: `'1. Report Ringkasan'!D${rowIdxExcel}` },
+        { f: `'1. Report Ringkasan'!F${rowIdxExcel}` }
+      ];
     });
     const ws4 = window.XLSX.utils.aoa_to_sheet([["REKAP KEHADIRAN KOMPREHENSIF"],["Periode: "+monthName],[],h4,...rows4]);
     ws4["!cols"] = [{wch:5},{wch:32},{wch:14},{wch:26},{wch:28},{wch:14},{wch:14},{wch:14}];
@@ -1059,8 +1078,12 @@
     applyStyle(ws4,0,0,S_TITLE);
     styleRow(ws4,3,h4.map(()=>S_HEADER));
     rows4.forEach((row,ri) => {
-      const ri2=4+ri; const alpha=row[7]; const pctH=row[3];
-      const isAlert = alpha>3 || pctH<85; 
+      const ri2=4+ri;
+      let h=0,s=0,ii=0,a=0;
+      monthDates.forEach(dk=>{ if(attendanceByDate[dk]){const v=attendanceByDate[dk][ri];if(v==="H")h++;else if(v==="S")s++;else if(v==="I")ii++;else if(v==="A")a++;}});
+      const total=h+s+ii+a; const pctH=total?(h/total*100):0;
+      
+      const isAlert = a>3 || pctH<85; 
       row.forEach((_,ci) => {
         if (isAlert) { applyStyle(ws4,ri2,ci,ci===1?S_RED_TXT:S_RED); }
         else if (ci===1) { applyStyle(ws4,ri2,ci,S_DATA); }
@@ -1070,37 +1093,70 @@
     });
     window.XLSX.utils.book_append_sheet(wb, ws4, "4. Rekap Kehadiran");
 
-    // ── SHEET 5: STATISTIK HARIAN ────────────────────────────────
+    // ── SHEET 5: STATISTIK HARIAN (100% DIKAWINKAN DENGAN RUMUS COUNTIF COLUMNS) ───
     const statsDays = ["Senin","Selasa","Rabu","Kamis","Jumat"];
     const h5 = ["Hari","Jumlah Hadir","Jumlah Izin","Jumlah Sakit","Jumlah Alpha","Total Absensi","Persentase Hadir (%)","Persentase Tidak Hadir (%)"];
-    const dailyStats = statsDays.map(dayName => {
-      let h=0,ii=0,s=0,a=0;
-      monthDates.forEach(dk => {
-        const dObj = getDateFromKey(dk);
-        if(DAY_NAMES[dObj.getDay()]===dayName && attendanceByDate[dk]) {
-          attendanceByDate[dk].forEach(v=>{if(v==="H")h++;else if(v==="I")ii++;else if(v==="S")s++;else if(v==="A")a++;});
+    
+    const startRow = 5;
+    const endRow = 4 + STUDENTS.length;
+
+    const dailyStats = statsDays.map((dayName, ri) => {
+      const excelRowIdx = 5 + ri; 
+      
+      const cols = [];
+      monthDates.forEach((dk, k) => {
+        if (DAY_NAMES[getDateFromKey(dk).getDay()] === dayName) {
+          cols.push(getExcelColumnName(2 + k));
         }
       });
-      const total=h+ii+s+a;
-      const pctH=total?Number((h/total*100).toFixed(2)):0;
-      const pctA=total?Number(((ii+s+a)/total*100).toFixed(2)):0;
-      return [dayName,h,ii,s,a,total,pctH,pctA];
+      
+      const formulaForStatus = (status) => {
+        if (cols.length === 0) return "0";
+        return cols.map(col => `COUNTIF('2. Data Harian'!${col}$${startRow}:${col}$${endRow},"${status}")`).join("+");
+      };
+
+      return [
+        dayName,
+        { f: formulaForStatus("H") },
+        { f: formulaForStatus("I") },
+        { f: formulaForStatus("S") },
+        { f: formulaForStatus("A") },
+        { f: `SUM(B${excelRowIdx}:E${excelRowIdx})` },
+        { f: `IF(F${excelRowIdx}>0, B${excelRowIdx}/F${excelRowIdx}*100, 0)` },
+        { f: `IF(F${excelRowIdx}>0, 100-G${excelRowIdx}, 0)` }
+      ];
     });
-    const avgH5 = Number((dailyStats.reduce((acc,r)=>acc+r[6],0)/dailyStats.length).toFixed(2));
-    const avgA5 = Number((dailyStats.reduce((acc,r)=>acc+r[7],0)/dailyStats.length).toFixed(2));
-    const avgRow5 = ["TOTAL RATA-RATA","","","","","",avgH5,avgA5];
+
+    const avgRowIdx5 = 5 + dailyStats.length; 
+    const avgRow5 = [
+      "TOTAL RATA-RATA",
+      { f: `SUM(B5:B9)` },
+      { f: `SUM(C5:C9)` },
+      { f: `SUM(D5:D9)` },
+      { f: `SUM(E5:E9)` },
+      { f: `SUM(F5:F9)` },
+      { f: `IF(F10>0, B10/F10*100, 0)` },
+      { f: `IF(F10>0, 100-G10, 0)` }
+    ];
+    
     const ws5 = window.XLSX.utils.aoa_to_sheet([["STATISTIK HARIAN (SENIN–JUMAT)"],["Periode: "+monthName],[],h5,...dailyStats,avgRow5]);
     ws5["!cols"] = [{wch:16},{wch:14},{wch:14},{wch:14},{wch:14},{wch:16},{wch:24},{wch:26}];
     ws5["!autofilter"] = { ref:`A4:H${4+dailyStats.length}` };
+    
     applyStyle(ws5,0,0,S_TITLE);
     styleRow(ws5,3,h5.map(()=>S_HEADER));
+    
     dailyStats.forEach((_,ri) => {
       const ri2=4+ri;
-      [S_DATA_C,S_DATA_C,S_DATA_C,S_DATA_C,S_DATA_C,S_DATA_C,S_PCT,S_PCT].forEach((st,ci)=>{ applyStyle(ws5,ri2,ci,st); if(ci>5) ws5[window.XLSX.utils.encode_cell({r:ri2,c:ci})].z = "0.00"; });
+      [S_DATA_C,S_DATA_C,S_DATA_C,S_DATA_C,S_DATA_C,S_DATA_C,S_PCT,S_PCT].forEach((st,ci)=>{ 
+        applyStyle(ws5,ri2,ci,st); 
+        if(ci>5) ws5[window.XLSX.utils.encode_cell({r:ri2,c:ci})].z = "0.00"; 
+      });
     });
-    const avgRowIdx5 = 4+dailyStats.length;
-    h5.forEach((_,ci)=>applyStyle(ws5,avgRowIdx5,ci,S_AVG));
-    [6,7].forEach(ci=> { ws5[window.XLSX.utils.encode_cell({r:avgRowIdx5,c:ci})].z = "0.00"; });
+    
+    h5.forEach((_,ci)=>applyStyle(ws5,avgRowIdx5-1,ci,S_AVG));
+    [6,7].forEach(ci=> { ws5[window.XLSX.utils.encode_cell({r:avgRowIdx5-1,c:ci})].z = "0.00"; });
+    
     window.XLSX.utils.book_append_sheet(wb, ws5, "5. Statistik Harian");
 
     // ── SHEET 6: ANALISIS POLA & PERINGATAN DINI (EWS) ───────────
@@ -1157,7 +1213,7 @@
            indication = "📅 Kecenderungan absen menjelang akhir pekan sangat tinggi. Wali kelas disarankan berkoordinasi dengan guru piket untuk pemantauan jam akhir.";
         } else if (ii >= 3) {
            pattern = "Izin di Luar Kewajaran";
-           indication = "⚠️ Terlalu banyak alasan izin. Konfirmasi ulang setiap surat izin ke pihak orang tua agar tidak dimanipulasi oleh siswa.";
+           indication = "⚠️ Terlahu banyak alasan izin. Konfirmasi ulang setiap surat izin ke pihak orang tua agar tidak dimanipulasi oleh siswa.";
         } else {
            pattern = "Ketidakhadiran Sporadis";
            indication = "Absen masih dalam batas logis/insidental. Cukup pantau perkembangan absensi bulan depan.";
@@ -1212,7 +1268,6 @@
     });
     window.XLSX.utils.book_append_sheet(wb, ws6, "6. Analisis Pola (EWS)");
 
-    // ── Eksekusi Downloader File Excel ──────────────────────────
     const fileName = `Rekap_absensi_XTKJ2_${monthPlainName}_${year}.xlsx`;
     window.XLSX.writeFile(wb, fileName, { cellStyles: true });
     toast(`✅ Ekspor berhasil! File "${fileName}" siap dibuka.`, "success");
@@ -1225,6 +1280,7 @@
     const d = getDateFromKey(currentDateKey);
     d.setDate(d.getDate() - 1);
     currentDateKey = getDateKey(d);
+    recapMonthKey = currentDateKey.slice(0, 7); 
     refreshAll();
   });
 
@@ -1232,12 +1288,17 @@
     const d = getDateFromKey(currentDateKey);
     d.setDate(d.getDate() + 1);
     currentDateKey = getDateKey(d);
+    recapMonthKey = currentDateKey.slice(0, 7); 
     refreshAll();
   });
 
   $("#dateInput").addEventListener("change", () => {
     const val = $("#dateInput").value;
-    if (val) { currentDateKey = val; refreshAll(); }
+    if (val) { 
+      currentDateKey = val; 
+      recapMonthKey = val.slice(0, 7); 
+      refreshAll(); 
+    }
   });
 
   $("#monthInput").addEventListener("change", () => {
@@ -1245,13 +1306,21 @@
     if (val) {
       const [year, month] = val.split("-").map(Number);
       currentDateKey = getDateKey(new Date(year, month - 1, 1));
+      recapMonthKey = val; 
       refreshAll();
     }
   });
 
+  // ============================================================
+  // NAVIGASI BULAN REKAP SINKRONISASI TOTAL
+  // ============================================================
   $("#monthRecapInput").addEventListener("change", () => {
     const val = $("#monthRecapInput").value;
-    if (val) { recapMonthKey = val; renderMonthly(); }
+    if (val) { 
+      recapMonthKey = val; 
+      currentDateKey = `${val}-01`; 
+      refreshAll(); 
+    }
   });
 
   $("#btnPrevMonth").addEventListener("click", () => {
@@ -1259,7 +1328,8 @@
     let nm = month - 1, ny = year;
     if (nm < 1) { nm = 12; ny--; }
     recapMonthKey = `${ny}-${String(nm).padStart(2, '0')}`;
-    renderMonthly();
+    currentDateKey = `${recapMonthKey}-01`;
+    refreshAll();
   });
 
   $("#btnNextMonth").addEventListener("click", () => {
@@ -1267,7 +1337,8 @@
     let nm = month + 1, ny = year;
     if (nm > 12) { nm = 1; ny++; }
     recapMonthKey = `${ny}-${String(nm).padStart(2, '0')}`;
-    renderMonthly();
+    currentDateKey = `${recapMonthKey}-01`;
+    refreshAll();
   });
 
   $("#chartMode").addEventListener("change", renderChart);
